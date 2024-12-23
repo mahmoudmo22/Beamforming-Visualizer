@@ -76,6 +76,9 @@ class BeamformingSimulator(QMainWindow):
         save_scenario_button.clicked.connect(self.scenario_manager.save_current_scenario)
         scenario_layout.addWidget(save_scenario_button)
 
+        # Connect array selection change
+        self.array_list.currentRowChanged.connect(self.array_list_selection_changed)
+
     def modify_simulator_init(self):
         # Add scenario manager to simulator
         self.scenario_manager = ScenarioManager(self)
@@ -116,37 +119,63 @@ class BeamformingSimulator(QMainWindow):
 
         # Number of elements
         array_layout.addWidget(QLabel("Number of Elements (N):"), 0, 0)
-        self.num_elements_spin = QSpinBox()
-        self.num_elements_spin.setRange(2, 32)
-        self.num_elements_spin.setValue(8)
-        array_layout.addWidget(self.num_elements_spin, 0, 1)
+        self.num_elements_slider = QSlider(Qt.Horizontal)
+        self.num_elements_slider.setRange(2, 32)
+        self.num_elements_slider.setValue(8)
+        self.num_elements_slider.setTickPosition(QSlider.TicksBelow)
+        self.num_elements_slider.setTickInterval(2)
+        self.num_elements_label = QLabel("8")
+        array_layout.addWidget(self.num_elements_slider, 0, 1)
+        array_layout.addWidget(self.num_elements_label, 0, 2)
 
         # Element spacing
         array_layout.addWidget(QLabel("Element Spacing (λ):"), 1, 0)
-        self.spacing_spin = ScientificSpinBox()
-        self.spacing_spin.setRange(0.1, 2.0)
-        self.spacing_spin.setValue(0.5)
-        self.spacing_spin.setSingleStep(0.1)
-        array_layout.addWidget(self.spacing_spin, 1, 1)
+        self.spacing_slider = QSlider(Qt.Horizontal)
+        self.spacing_slider.setRange(10, 200)  # 0.1 to 2.0 with 100x scale
+        self.spacing_slider.setValue(50)  # 0.5 default
+        self.spacing_slider.setTickPosition(QSlider.TicksBelow)
+        self.spacing_slider.setTickInterval(10)
+        self.spacing_label = QLabel("0.5")
+        array_layout.addWidget(self.spacing_slider, 1, 1)
+        array_layout.addWidget(self.spacing_label, 1, 2)
 
         # Frequency
         array_layout.addWidget(QLabel("Frequency (GHz):"), 2, 0)
-        self.freq_spin = ScientificSpinBox()
-        self.freq_spin.setRange(0.1, 100.0)
-        self.freq_spin.setValue(1.0)
-        self.freq_spin.setSingleStep(0.1)
-        array_layout.addWidget(self.freq_spin, 2, 1)
+        self.freq_slider = QSlider(Qt.Horizontal)
+        self.freq_slider.setRange(1, 1000)  # 0.1 to 100.0 with 10x scale
+        self.freq_slider.setValue(10)  # 1.0 default
+        self.freq_slider.setTickPosition(QSlider.TicksBelow)
+        self.freq_slider.setTickInterval(100)
+        self.freq_label = QLabel("1.0")
+        array_layout.addWidget(self.freq_slider, 2, 1)
+        array_layout.addWidget(self.freq_label, 2, 2)
 
         # Position controls
         array_layout.addWidget(QLabel("Position (x, y) [m]:"), 3, 0)
         pos_layout = QHBoxLayout()
-        self.pos_x_spin = ScientificSpinBox()
-        self.pos_y_spin = ScientificSpinBox()
-        self.pos_x_spin.setRange(-50, 50)
-        self.pos_y_spin.setRange(-50, 50)
-        pos_layout.addWidget(self.pos_x_spin)
-        pos_layout.addWidget(self.pos_y_spin)
-        array_layout.addLayout(pos_layout, 3, 1)
+        
+        self.pos_x_slider = QSlider(Qt.Horizontal)
+        self.pos_x_slider.setRange(-500, 500)  # -50 to 50 with 10x scale
+        self.pos_x_slider.setValue(0)
+        self.pos_x_label = QLabel("0.0")
+        
+        self.pos_y_slider = QSlider(Qt.Horizontal)
+        self.pos_y_slider.setRange(-500, 500)  # -50 to 50 with 10x scale
+        self.pos_y_slider.setValue(0)
+        self.pos_y_label = QLabel("0.0")
+        
+        pos_layout.addWidget(self.pos_x_slider)
+        pos_layout.addWidget(self.pos_x_label)
+        pos_layout.addWidget(self.pos_y_slider)
+        pos_layout.addWidget(self.pos_y_label)
+        array_layout.addLayout(pos_layout, 3, 1, 1, 2)
+
+        # Connect slider signals
+        self.num_elements_slider.valueChanged.connect(self.update_num_elements_label)
+        self.spacing_slider.valueChanged.connect(self.update_spacing_label)
+        self.freq_slider.valueChanged.connect(self.update_freq_label)
+        self.pos_x_slider.valueChanged.connect(self.update_pos_x_label)
+        self.pos_y_slider.valueChanged.connect(self.update_pos_y_label)
 
         # Curved array options
         curved_layout = QHBoxLayout()
@@ -235,7 +264,86 @@ class BeamformingSimulator(QMainWindow):
         phase_info_group.setLayout(phase_layout)
         layout.addWidget(phase_info_group)
 
+        # Connect slider signals for both label updates and real-time plot updates
+        self.num_elements_slider.valueChanged.connect(self.on_parameter_changed)
+        self.spacing_slider.valueChanged.connect(self.on_parameter_changed)
+        self.freq_slider.valueChanged.connect(self.on_parameter_changed)
+        self.pos_x_slider.valueChanged.connect(self.on_parameter_changed)
+        self.pos_y_slider.valueChanged.connect(self.on_parameter_changed)
+        self.curved_check.stateChanged.connect(self.on_parameter_changed)
+        self.radius_spin.valueChanged.connect(self.on_parameter_changed)
+
         return panel
+
+    # Add these new methods
+    def on_parameter_changed(self, _):
+        """Handle any parameter change by updating the selected array"""
+        current_row = self.array_list.currentRow()
+        if current_row >= 0:  # Only update if an array is selected
+            array = self.system.arrays[current_row]
+            self.update_array_parameters(array)
+            self.update_plots()
+
+    def update_array_parameters(self, array):
+        """Update the parameters of the selected array"""
+        array.num_elements = self.num_elements_slider.value()
+        array.element_spacing = self.spacing_slider.value() / 100.0
+        array.frequency = self.freq_slider.value() / 10.0 * 1e9
+        array.position = np.array([self.pos_x_slider.value() / 10.0, 
+                                 self.pos_y_slider.value() / 10.0])
+        array.is_curved = self.curved_check.isChecked()
+        array.curvature_radius = (self.radius_spin.value() 
+                                if self.curved_check.isChecked() else None)
+        array.wavelength = constants.c / array.frequency
+        array.wave_number = 2 * np.pi / array.wavelength
+        array.update_element_positions()
+        array.set_beam_direction(np.deg2rad(self.steering_angle_spin.value()))
+
+    def array_list_selection_changed(self):
+        """Update control values when different array is selected"""
+        current_row = self.array_list.currentRow()
+        if current_row >= 0:
+            array = self.system.arrays[current_row]
+            # Update sliders without triggering updates
+            self.num_elements_slider.blockSignals(True)
+            self.spacing_slider.blockSignals(True)
+            self.freq_slider.blockSignals(True)
+            self.pos_x_slider.blockSignals(True)
+            self.pos_y_slider.blockSignals(True)
+            
+            self.num_elements_slider.setValue(array.num_elements)
+            self.spacing_slider.setValue(int(array.element_spacing * 100))
+            self.freq_slider.setValue(int(array.frequency / 1e8))
+            self.pos_x_slider.setValue(int(array.position[0] * 10))
+            self.pos_y_slider.setValue(int(array.position[1] * 10))
+            self.curved_check.setChecked(array.is_curved)
+            if array.is_curved:
+                self.radius_spin.setValue(array.curvature_radius)
+            
+            self.num_elements_slider.blockSignals(False)
+            self.spacing_slider.blockSignals(False)
+            self.freq_slider.blockSignals(False)
+            self.pos_x_slider.blockSignals(False)
+            self.pos_y_slider.blockSignals(False)
+
+    def update_num_elements_label(self, value):
+        self.num_elements_label.setText(str(value))
+
+    def update_spacing_label(self, value):
+        spacing = value / 100.0
+        self.spacing_label.setText(f"{spacing:.2f}")
+
+    def update_freq_label(self, value):
+        freq = value / 10.0
+        self.freq_label.setText(f"{freq:.1f}")
+
+    def update_pos_x_label(self, value):
+        pos = value / 10.0
+        self.pos_x_label.setText(f"{pos:.1f}")
+
+    def update_pos_y_label(self, value):
+        pos = value / 10.0
+        self.pos_y_label.setText(f"{pos:.1f}")
 
     def create_visualization_panel(self):
         panel = QWidget()
@@ -274,10 +382,10 @@ class BeamformingSimulator(QMainWindow):
 
     def add_array(self):
         array = PhasedArrayUnit(
-            position=(self.pos_x_spin.value(), self.pos_y_spin.value()),
-            num_elements=self.num_elements_spin.value(),
-            element_spacing=self.spacing_spin.value(),
-            frequency=self.freq_spin.value() * 1e9,
+            position=(self.pos_x_slider.value() / 10.0, self.pos_y_slider.value() / 10.0),
+            num_elements=self.num_elements_slider.value(),
+            element_spacing=self.spacing_slider.value() / 100.0,
+            frequency=self.freq_slider.value() / 10.0 * 1e9,
             is_curved=self.curved_check.isChecked(),
             curvature_radius=self.radius_spin.value() if self.curved_check.isChecked() else None
         )
