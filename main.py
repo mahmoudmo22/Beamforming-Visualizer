@@ -472,9 +472,8 @@ class BeamformingSimulator(QMainWindow):
         ax_pattern.grid(True, linestyle='--', alpha=0.7)
 
         # Set 0 at positive x-axis (East), counterclockwise
-        ax_pattern.set_theta_zero_location('E')  # 0 degrees at East
-        ax_pattern.set_theta_direction(1)  # Counterclockwise
-
+        ax_pattern.set_theta_zero_location('W')  # 0 degrees at East
+        ax_pattern.set_theta_direction(-1)  # Counterclockwise
         # Remove direction labels
         ax_pattern.set_thetagrids([0, 45, 90, 135, 180, 225, 270, 315],
                                   ['0', '45', '90', '135', '180', '225', '270', '315'])
@@ -499,9 +498,9 @@ class BeamformingSimulator(QMainWindow):
 
         # Rotate the interference map to match radiation pattern
         intensity = np.abs(field) ** 2
-        rotated_intensity = np.rot90(intensity, k=2)  # Rotate 90 degrees
+        rotated_intensity = np.rot90(intensity, k=0)  # Rotate 90 degrees
 
-        log_intensity = np.log1p(rotated_intensity)
+        log_intensity = np.log1p(intensity)
         if np.max(log_intensity) > 0:
             log_intensity = log_intensity / np.max(log_intensity)
         else:
